@@ -1,0 +1,13 @@
+Grow A Garden Auto Trade Script
+
+== Config format ==
+
+repeat wait() until game:IsLoaded()
+task.wait(10)
+
+getgenv().Configuration = {
+    petToGive = {
+        "Fluffy",
+    },
+    targetUsername = "TargetUser123"
+}
