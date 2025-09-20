@@ -1,23 +1,886 @@
--- Copyright (c) 2025 SethNooby1. All Rights Reserved.
--- Proprietary software. No copying, redistribution, or use without purchase.
--- Access granted only with a valid paid license from the author.
+-- ========================================
+-- Pro Grow A Garden Auto Trade by DuckyHub
+-- ========================================
 
---haha catch ya trying to copy it nerd.
+-- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
-local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-local function dec(data)
-  data = data:gsub('[^'..b..'=]','')
-  return (data:gsub('.', function(x)
-    if x == '=' then return '' end
-    local r,f='',(b:find(x)-1)
-    for i=6,1,-1 do r=r..(f%2^i - f%2^(i-1) > 0 and '1' or '0') end
-    return r
-  end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-    if #x ~= 8 then return '' end
-    local c=0
-    for i=1,8 do c = c + (x:sub(i,i)=='1' and 2^(8-i) or 0) end
-    return string.char(c)
-  end))
+-- State
+local tradeAccepted = false
+local petStatus = {}
+local favoriteBlocked = false
+local notHoldingTool = false
+
+-- Config
+local config = getgenv().Configuration
+if not config then error("Configuration not found! Please set getgenv().Configuration first.") return end
+
+local petToGive = config.petToGive
+local tradeWholeInventory = config.tradeWholeInventory or false
+
+if not tradeWholeInventory then
+    if not petToGive or #petToGive == 0 then error("No pets configured for trading! Please set Configuration.petToGive or enable tradeWholeInventory.") return end
 end
-local raw = dec("LS0gQ29weXJpZ2h0IChjKSAyMDI1IFNldGhOb29ieTEuIEFsbCBSaWdodHMgUmVzZXJ2ZWQuCi0tIFByb3ByaWV0YXJ5IHNvZnR3YXJlLiBObyBjb3B5aW5nLCByZWRpc3RyaWJ1dGlvbiwgb3IgdXNlIHdpdGhvdXQgcHVyY2hhc2UuCi0tIEFjY2VzcyBncmFudGVkIG9ubHkgdmlhIGEgdmFsaWQgcGFpZCBsaWNlbnNlIGZyb20gdGhlIGF1dGhvci4KCi0tIFNlcnZpY2VzCmxvY2FsIFJlcGxpY2F0ZWRTdG9yYWdlID0gZ2FtZTpHZXRTZXJ2aWNlKCJSZXBsaWNhdGVkU3RvcmFnZSIpCmxvY2FsIFBsYXllcnMgPSBnYW1lOkdldFNlcnZpY2UoIlBsYXllcnMiKQpsb2NhbCBMb2NhbFBsYXllciA9IFBsYXllcnMuTG9jYWxQbGF5ZXIKCi0tIFN0YXRlCmxvY2FsIHRyYWRlQWNjZXB0ZWQgPSBmYWxzZQpsb2NhbCBwZXRTdGF0dXMgPSB7fQpsb2NhbCBmYXZvcml0ZUJsb2NrZWQgPSBmYWxzZQpsb2NhbCBub3RIb2xkaW5nVG9vbCA9IGZhbHNlCgotLSBDb25maWcKbG9jYWwgY29uZmlnID0gZ2V0Z2VudigpLkNvbmZpZ3VyYXRpb24KaWYgbm90IGNvbmZpZyB0aGVuIGVycm9yKCJDb25maWd1cmF0aW9uIG5vdCBmb3VuZCEgUGxlYXNlIHNldCBnZXRnZW52KCkuQ29uZmlndXJhdGlvbiBmaXJzdC4iKSByZXR1cm4gZW5kCgpsb2NhbCBwZXRUb0dpdmUgPSBjb25maWcucGV0VG9HaXZlCmlmIG5vdCBwZXRUb0dpdmUgb3IgI3BldFRvR2l2ZSA9PSAwIHRoZW4gZXJyb3IoIk5vIHBldHMgY29uZmlndXJlZCBmb3IgdHJhZGluZyEgUGxlYXNlIHNldCBDb25maWd1cmF0aW9uLnBldFRvR2l2ZS4iKSByZXR1cm4gZW5kCgpsb2NhbCB0YXJnZXRVc2VybmFtZSA9IGNvbmZpZy50YXJnZXRVc2VybmFtZQppZiBub3QgdGFyZ2V0VXNlcm5hbWUgdGhlbiBlcnJvcigiTm8gdGFyZ2V0IHVzZXJuYW1lIGNvbmZpZ3VyZWQhIFBsZWFzZSBzZXQgQ29uZmlndXJhdGlvbi50YXJnZXRVc2VybmFtZS4iKSByZXR1cm4gZW5kCgotLSBDbGVhbiB1cCBleGlzdGluZyBVSQpsb2NhbCBmdW5jdGlvbiBjbGVhbnVwRXhpc3RpbmdVSSgpCiAgICBmb3IgXywgZ3VpIGluIHBhaXJzKGdhbWU6R2V0U2VydmljZSgiQ29yZUd1aSIpOkdldENoaWxkcmVuKCkpIGRvCiAgICAgICAgaWYgZ3VpLk5hbWUgPT0gIkF1dG8gVHJhZGUgVUkiIHRoZW4KICAgICAgICAgICAgZ3VpOkRlc3Ryb3koKQogICAgICAgIGVuZAogICAgZW5kCmVuZApjbGVhbnVwRXhpc3RpbmdVSSgpCgotLSBVSQpsb2NhbCBTY3JlZW5HdWkgPSBJbnN0YW5jZS5uZXcoIlNjcmVlbkd1aSIpClNjcmVlbkd1aS5OYW1lID0gIkF1dG8gVHJhZGUgVUkiClNjcmVlbkd1aS5QYXJlbnQgPSBnYW1lLkNvcmVHdWkKCmxvY2FsIE1haW5GcmFtZSA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpNYWluRnJhbWUuTmFtZSA9ICJNYWluRnJhbWUiCk1haW5GcmFtZS5TaXplID0gVURpbTIubmV3KDAsIDQwMCwgMCwgMjUwKQpNYWluRnJhbWUuUG9zaXRpb24gPSBVRGltMi5uZXcoMC41LCAtMjAwLCAwLjUsIC0xMjUpCk1haW5GcmFtZS5CYWNrZ3JvdW5kQ29sb3IzID0gQ29sb3IzLmZyb21SR0IoMjUsIDI1LCAyNSkKTWFpbkZyYW1lLkJvcmRlclNpemVQaXhlbCA9IDAKTWFpbkZyYW1lLlBhcmVudCA9IFNjcmVlbkd1aQpJbnN0YW5jZS5uZXcoIlVJQ29ybmVyIiwgTWFpbkZyYW1lKQoKbG9jYWwgU3RhdHVzRnJhbWUgPSBJbnN0YW5jZS5uZXcoIkZyYW1lIikKU3RhdHVzRnJhbWUuU2l6ZSA9IFVEaW0yLm5ldygxLCAtMjAsIDAsIDQwKQpTdGF0dXNGcmFtZS5Qb3NpdGlvbiA9IFVEaW0yLm5ldygwLCAxMCwgMCwgMTApClN0YXR1c0ZyYW1lLkJhY2tncm91bmRDb2xvcjMgPSBDb2xvcjMuZnJvbVJHQigzNSwgMzUsIDM1KQpTdGF0dXNGcmFtZS5Cb3JkZXJTaXplUGl4ZWwgPSAwClN0YXR1c0ZyYW1lLlBhcmVudCA9IE1haW5GcmFtZQpJbnN0YW5jZS5uZXcoIlVJQ29ybmVyIiwgU3RhdHVzRnJhbWUpCgpsb2NhbCBTdGF0dXNUZXh0ID0gSW5zdGFuY2UubmV3KCJUZXh0TGFiZWwiKQpTdGF0dXNUZXh0LlNpemUgPSBVRGltMi5uZXcoMSwgLTIwLCAxLCAwKQpTdGF0dXNUZXh0LlBvc2l0aW9uID0gVURpbTIubmV3KDAsIDEwLCAwLCAwKQpTdGF0dXNUZXh0LkJhY2tncm91bmRUcmFuc3BhcmVuY3kgPSAxClN0YXR1c1RleHQuVGV4dENvbG9yMyA9IENvbG9yMy5mcm9tUkdCKDI1NSwgMjU1LCAyNTUpClN0YXR1c1RleHQuVGV4dFNpemUgPSAxNgpTdGF0dXNUZXh0LkZvbnQgPSBFbnVtLkZvbnQuR290aGFtU2VtaWJvbGQKU3RhdHVzVGV4dC5UZXh0ID0gIkF1dG8gVHJhZGUgU3RhdHVzIgpTdGF0dXNUZXh0LlRleHRYQWxpZ25tZW50ID0gRW51bS5UZXh0WEFsaWdubWVudC5MZWZ0ClN0YXR1c1RleHQuUGFyZW50ID0gU3RhdHVzRnJhbWUKCmxvY2FsIFBldExpc3RGcmFtZSA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpQZXRMaXN0RnJhbWUuU2l6ZSA9IFVEaW0yLm5ldygxLCAtMjAsIDEsIC02MCkKUGV0TGlzdEZyYW1lLlBvc2l0aW9uID0gVURpbTIubmV3KDAsIDEwLCAwLCA2MCkKUGV0TGlzdEZyYW1lLkJhY2tncm91bmRDb2xvcjMgPSBDb2xvcjMuZnJvbVJHQigzNSwgMzUsIDM1KQpQZXRMaXN0RnJhbWUuQm9yZGVyU2l6ZVBpeGVsID0gMApQZXRMaXN0RnJhbWUuUGFyZW50ID0gTWFpbkZyYW1lCkluc3RhbmNlLm5ldygiVUlDb3JuZXIiLCBQZXRMaXN0RnJhbWUpCgpsb2NhbCBQZXRDb3VudFRleHQgPSBJbnN0YW5jZS5uZXcoIlRleHRMYWJlbCIpClBldENvdW50VGV4dC5TaXplID0gVURpbTIubmV3KDEsIC0yMCwgMSwgLTIwKQpQZXRDb3VudFRleHQuUG9zaXRpb24gPSBVRGltMi5uZXcoMCwgMTAsIDAsIDEwKQpQZXRDb3VudFRleHQuQmFja2dyb3VuZFRyYW5zcGFyZW5jeSA9IDEKUGV0Q291bnRUZXh0LlRleHRDb2xvcjMgPSBDb2xvcjMuZnJvbVJHQigyNTUsIDI1NSwgMjU1KQpQZXRDb3VudFRleHQuVGV4dFNpemUgPSAxNgpQZXRDb3VudFRleHQuRm9udCA9IEVudW0uRm9udC5Hb3RoYW0KUGV0Q291bnRUZXh0LlRleHQgPSAiQ291bnRpbmcgcGV0cy4uLiIKUGV0Q291bnRUZXh0LlRleHRYQWxpZ25tZW50ID0gRW51bS5UZXh0WEFsaWdubWVudC5MZWZ0ClBldENvdW50VGV4dC5UZXh0WUFsaWdubWVudCA9IEVudW0uVGV4dFlBbGlnbm1lbnQuVG9wClBldENvdW50VGV4dC5QYXJlbnQgPSBQZXRMaXN0RnJhbWUKCmxvY2FsIGZ1bmN0aW9uIHVwZGF0ZVN0YXR1cyh0ZXh0KQogICAgaWYgU3RhdHVzVGV4dCB0aGVuIFN0YXR1c1RleHQuVGV4dCA9IHRleHQgZW5kCmVuZAoKbG9jYWwgZnVuY3Rpb24gdXBkYXRlUGV0Q291bnQocGV0TmFtZSwgY291bnQpCiAgICBwZXRTdGF0dXNbcGV0TmFtZV0gPSBjb3VudCA9PSAwIGFuZCAiQ29tcGxldGVkIiBvciB0b3N0cmluZyhjb3VudCkKICAgIGxvY2FsIHN0YXR1c1RleHQgPSAiIgogICAgZm9yIF8sIG5hbWUgaW4gaXBhaXJzKHBldFRvR2l2ZSkgZG8KICAgICAgICBsb2NhbCBzdCA9IHBldFN0YXR1c1tuYW1lXSBvciAiUGVuZGluZyIKICAgICAgICBzdGF0dXNUZXh0IC4uPSBuYW1lIC4uICI6ICIgLi4gc3QgLi4gIlxuIgogICAgZW5kCiAgICBQZXRDb3VudFRleHQuVGV4dCA9IHN0YXR1c1RleHQKZW5kCgotLSBIZWxwZXJzCmxvY2FsIGZ1bmN0aW9uIGJhc2VOYW1lKHN0cikKICAgIGxvY2FsIG4gPSBzdHI6bWF0Y2goIl4oW15bXSspIikKICAgIHJldHVybiBuIGFuZCBuOm1hdGNoKCJeJXMqKC4tKSVzKiQiKSBvciBzdHIKZW5kCgpsb2NhbCBmdW5jdGlvbiB1bmVxdWlwQWxsUGV0cygpCiAgICBsb2NhbCBjaGFyID0gTG9jYWxQbGF5ZXIuQ2hhcmFjdGVyCiAgICBsb2NhbCBiYWNrcGFjayA9IExvY2FsUGxheWVyLkJhY2twYWNrCiAgICBpZiBub3QgY2hhciBvciBub3QgYmFja3BhY2sgdGhlbiByZXR1cm4gZW5kCiAgICBmb3IgXywgaXRtIGluIGlwYWlycyhjaGFyOkdldENoaWxkcmVuKCkpIGRvCiAgICAgICAgaWYgaXRtOklzQSgiVG9vbCIpIHRoZW4KICAgICAgICAgICAgaXRtLlBhcmVudCA9IGJhY2twYWNrCiAgICAgICAgZW5kCiAgICBlbmQKZW5kCgpsb2NhbCBmdW5jdGlvbiBjb3VudFBldHNJbkJhY2twYWNrKHBldE5hbWUpCiAgICBsb2NhbCBjb3VudCA9IDAKICAgIGxvY2FsIGJhY2twYWNrID0gTG9jYWxQbGF5ZXIuQmFja3BhY2sKICAgIGxvY2FsIGNoYXJhY3RlciA9IExvY2FsUGxheWVyLkNoYXJhY3RlcgogICAgaWYgbm90IGJhY2twYWNrIG9yIG5vdCBjaGFyYWN0ZXIgdGhlbiByZXR1cm4gMCBlbmQKCiAgICBmb3IgXywgcGV0IGluIGlwYWlycyhiYWNrcGFjazpHZXRDaGlsZHJlbigpKSBkbwogICAgICAgIGlmIGJhc2VOYW1lKHBldC5OYW1lKSA9PSBwZXROYW1lIHRoZW4gY291bnQgKz0gMSBlbmQKICAgIGVuZAogICAgZm9yIF8sIHBldCBpbiBpcGFpcnMoY2hhcmFjdGVyOkdldENoaWxkcmVuKCkpIGRvCiAgICAgICAgaWYgYmFzZU5hbWUocGV0Lk5hbWUpID09IHBldE5hbWUgdGhlbiBjb3VudCArPSAxIGVuZAogICAgZW5kCiAgICByZXR1cm4gY291bnQKZW5kCgpsb2NhbCBmdW5jdGlvbiBpbml0aWFsaXplUGV0Q291bnRzKCkKICAgIHVwZGF0ZVN0YXR1cygiSW5pdGlhbGl6aW5nIHBldCBjb3VudHMuLi4iKQogICAgdGFzay53YWl0KDEpCiAgICBmb3IgXywgcGV0TmFtZSBpbiBpcGFpcnMocGV0VG9HaXZlKSBkbwogICAgICAgIHVwZGF0ZVBldENvdW50KHBldE5hbWUsIGNvdW50UGV0c0luQmFja3BhY2socGV0TmFtZSkpCiAgICBlbmQKZW5kCgotLSBSZW1vdGVzCmxvY2FsIFBldEdpZnRpbmdTZXJ2aWNlID0gUmVwbGljYXRlZFN0b3JhZ2UuR2FtZUV2ZW50cy5QZXRHaWZ0aW5nU2VydmljZQpsb2NhbCBOb3RpZmljYXRpb24gPSBSZXBsaWNhdGVkU3RvcmFnZS5HYW1lRXZlbnRzLk5vdGlmaWNhdGlvbgpsb2NhbCBGYXZvcml0ZV9JdGVtID0gUmVwbGljYXRlZFN0b3JhZ2UuR2FtZUV2ZW50cy5GYXZvcml0ZV9JdGVtCgotLSBOb3RpZmljYXRpb25zCk5vdGlmaWNhdGlvbi5PbkNsaWVudEV2ZW50OkNvbm5lY3QoZnVuY3Rpb24obWVzc2FnZSkKICAgIC0tIE5vcm1hbGl6ZSBmb3Igc2FmZXR5CiAgICBpZiB0eXBlKG1lc3NhZ2UpID09ICJzdHJpbmciIHRoZW4KICAgICAgICBpZiBtZXNzYWdlID09ICJUcmFkZSBjb21wbGV0ZWQhIiBvciBtZXNzYWdlID09ICJUcmFkZSBjb21wbGV0ZSIgb3IgbWVzc2FnZSA9PSAiVHJhZGUgQ29tcGxldGUiIHRoZW4KICAgICAgICAgICAgdHJhZGVBY2NlcHRlZCA9IHRydWUKICAgICAgICBlbHNlaWYgbWVzc2FnZSA9PSAiQ2Fubm90IGdpZnQgYSBmYXZvcml0ZWQgcGV0ISIgdGhlbgogICAgICAgICAgICBmYXZvcml0ZUJsb2NrZWQgPSB0cnVlCiAgICAgICAgZWxzZWlmIG1lc3NhZ2UgPT0gIllvdSBhcmUgbm90IGhvbGRpbmcgYSB0b29sISIgdGhlbgogICAgICAgICAgICBub3RIb2xkaW5nVG9vbCA9IHRydWUKICAgICAgICBlbmQKICAgIGVuZAplbmQpCgotLSBFcXVpcCAoTk8gYXV0by11bmZhdm9yaXRlIGhlcmU7IG9ubHkgcmVzcG9uZCB0byBzZXJ2ZXIgbWVzc2FnZXMpCmxvY2FsIGZ1bmN0aW9uIGVxdWlwUGV0KHBldE5hbWUpCiAgICBsb2NhbCBiYWNrcGFjayA9IExvY2FsUGxheWVyLkJhY2twYWNrCiAgICBmb3IgXywgcGV0IGluIGlwYWlycyhiYWNrcGFjazpHZXRDaGlsZHJlbigpKSBkbwogICAgICAgIGlmIHBldDpJc0EoIlRvb2wiKSBhbmQgYmFzZU5hbWUocGV0Lk5hbWUpID09IHBldE5hbWUgdGhlbgogICAgICAgICAgICBwZXQuUGFyZW50ID0gTG9jYWxQbGF5ZXIuQ2hhcmFjdGVyCiAgICAgICAgICAgIHRhc2sud2FpdCgwLjUpCiAgICAgICAgICAgIHJldHVybiBwZXQKICAgICAgICBlbmQKICAgIGVuZAogICAgcmV0dXJuIG5pbAplbmQKCi0tIENvdW50ZG93biBoZWxwZXIgdGhhdCBjYW4gYWJvcnQgaWYgdHJhZGUgY29tcGxldGVzIG1pZC13YWl0CmxvY2FsIGZ1bmN0aW9uIGNvdW50ZG93bldpdGhBYm9ydCh0b3RhbFNlY29uZHMsIG1lc3NhZ2VGbXQpCiAgICBmb3IgaSA9IHRvdGFsU2Vjb25kcywgMSwgLTEgZG8KICAgICAgICBpZiB0cmFkZUFjY2VwdGVkIHRoZW4gcmV0dXJuIHRydWUgZW5kCiAgICAgICAgdXBkYXRlU3RhdHVzKHN0cmluZy5mb3JtYXQobWVzc2FnZUZtdCwgaSkpCiAgICAgICAgdGFzay53YWl0KDEpCiAgICAgICAgaWYgdHJhZGVBY2NlcHRlZCB0aGVuIHJldHVybiB0cnVlIGVuZAogICAgZW5kCiAgICByZXR1cm4gZmFsc2UKZW5kCgotLSBUcmFkZSBsb2dpYwpsb2NhbCBmdW5jdGlvbiB0cmFkZVBldCh0YXJnZXRQbGF5ZXIsIHBldE5hbWUpCiAgICBsb2NhbCBtYXhBdHRlbXB0cyA9IDMKICAgIGxvY2FsIGN1cnJlbnRBdHRlbXB0ID0gMQoKICAgIHdoaWxlIGN1cnJlbnRBdHRlbXB0IDw9IG1heEF0dGVtcHRzIGRvCiAgICAgICAgdXBkYXRlU3RhdHVzKHN0cmluZy5mb3JtYXQoIlRyYWRpbmcgJXMgKEF0dGVtcHQgJWQvJWQpIiwgcGV0TmFtZSwgY3VycmVudEF0dGVtcHQsIG1heEF0dGVtcHRzKSkKICAgICAgICB0cmFkZUFjY2VwdGVkID0gZmFsc2UKICAgICAgICBmYXZvcml0ZUJsb2NrZWQgPSBmYWxzZQogICAgICAgIG5vdEhvbGRpbmdUb29sID0gZmFsc2UKCiAgICAgICAgLS0gaW5uZXIgbG9vcDogcmV0cnkgd2l0aGluIFNBTUUgYXR0ZW1wdCBvbiBzcGVjaWZpYyBoYW5kbGVkIGVycm9ycwogICAgICAgIHdoaWxlIHRydWUgZG8KICAgICAgICAgICAgLS0gRW5zdXJlIHdlIGFyZSBob2xkaW5nIHRoZSBwZXQgYmVmb3JlIHNlbmRpbmcKICAgICAgICAgICAgbG9jYWwgY2hhciA9IExvY2FsUGxheWVyLkNoYXJhY3RlcgogICAgICAgICAgICBsb2NhbCBob2xkaW5nID0gZmFsc2UKICAgICAgICAgICAgaWYgY2hhciB0aGVuCiAgICAgICAgICAgICAgICBmb3IgXywgdG9vbCBpbiBpcGFpcnMoY2hhcjpHZXRDaGlsZHJlbigpKSBkbwogICAgICAgICAgICAgICAgICAgIGlmIHRvb2w6SXNBKCJUb29sIikgYW5kIGJhc2VOYW1lKHRvb2wuTmFtZSkgPT0gcGV0TmFtZSB0aGVuCiAgICAgICAgICAgICAgICAgICAgICAgIGhvbGRpbmcgPSB0cnVlCiAgICAgICAgICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgICAgICAgICAgZW5kCiAgICAgICAgICAgICAgICBlbmQKICAgICAgICAgICAgZW5kCiAgICAgICAgICAgIGlmIG5vdCBob2xkaW5nIHRoZW4KICAgICAgICAgICAgICAgIHVwZGF0ZVN0YXR1cygiRXF1aXBpbmcgUGV0IikKICAgICAgICAgICAgICAgIHVuZXF1aXBBbGxQZXRzKCkKICAgICAgICAgICAgICAgIGxvY2FsIG9rID0gZXF1aXBQZXQocGV0TmFtZSkKICAgICAgICAgICAgICAgIGlmIG5vdCBvayB0aGVuCiAgICAgICAgICAgICAgICAgICAgLS0gY2FuJ3QgZXF1aXAgLT4gYnJlYWsgdGhpcyBhdHRlbXB0IChjb25zdW1lIGF0dGVtcHQpCiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICAgICAgICAgIGVuZAogICAgICAgICAgICBlbmQKCiAgICAgICAgICAgIC0tIFNlbmQgdHJhZGUgcmVxdWVzdAogICAgICAgICAgICBQZXRHaWZ0aW5nU2VydmljZTpGaXJlU2VydmVyKCJHaXZlUGV0IiwgdGFyZ2V0UGxheWVyKQoKICAgICAgICAgICAgLS0gV2FpdCBmb3Igc2lnbmFscwogICAgICAgICAgICBsb2NhbCBzdGFydFRpbWUgPSB0aWNrKCkKICAgICAgICAgICAgbG9jYWwgdGltZW91dCA9IDUKICAgICAgICAgICAgd2hpbGUgKHRpY2soKSAtIHN0YXJ0VGltZSkgPCB0aW1lb3V0IGFuZCBub3QgdHJhZGVBY2NlcHRlZCBhbmQgbm90IGZhdm9yaXRlQmxvY2tlZCBhbmQgbm90IG5vdEhvbGRpbmdUb29sIGRvCiAgICAgICAgICAgICAgICB0YXNrLndhaXQoMC41KQogICAgICAgICAgICBlbmQKCiAgICAgICAgICAgIGlmIHRyYWRlQWNjZXB0ZWQgdGhlbgogICAgICAgICAgICAgICAgcmV0dXJuIHRydWUKICAgICAgICAgICAgZW5kCgogICAgICAgICAgICBpZiBmYXZvcml0ZUJsb2NrZWQgdGhlbgogICAgICAgICAgICAgICAgLS0gVW5mYXZvcml0ZSBjdXJyZW50bHkgaGVsZCB0b29scyAodG9nZ2xlKSB0aGVuIHF1aWNrIGRlbGF5IGFuZCByZXRyeSBTQU1FIGF0dGVtcHQKICAgICAgICAgICAgICAgIGxvY2FsIGNoID0gTG9jYWxQbGF5ZXIuQ2hhcmFjdGVyCiAgICAgICAgICAgICAgICBpZiBjaCB0aGVuCiAgICAgICAgICAgICAgICAgICAgZm9yIF8sIHRvb2wgaW4gaXBhaXJzKGNoOkdldENoaWxkcmVuKCkpIGRvCiAgICAgICAgICAgICAgICAgICAgICAgIGlmIHRvb2w6SXNBKCJUb29sIikgdGhlbgogICAgICAgICAgICAgICAgICAgICAgICAgICAgRmF2b3JpdGVfSXRlbTpGaXJlU2VydmVyKHRvb2wpCiAgICAgICAgICAgICAgICAgICAgICAgIGVuZAogICAgICAgICAgICAgICAgICAgIGVuZAogICAgICAgICAgICAgICAgZW5kCiAgICAgICAgICAgICAgICAtLSBTaG9ydCBkZWxheSB3aXRoIHNhbWUgZm9ybWF0CiAgICAgICAgICAgICAgICBjb3VudGRvd25XaXRoQWJvcnQoMiwgIlBldCBpcyBmYXZvcml0ZWQuIFVuZmF2b3JpdGluZyBhbmQgcmV0cnlpbmcgaW4gJWQgc2Vjb25kcy4uLiIpCiAgICAgICAgICAgICAgICAtLSByZXNldCBmbGFncyBhbmQgcmUtbG9vcCBzYW1lIGF0dGVtcHQKICAgICAgICAgICAgICAgIGZhdm9yaXRlQmxvY2tlZCA9IGZhbHNlCiAgICAgICAgICAgICAgICBub3RIb2xkaW5nVG9vbCA9IGZhbHNlCiAgICAgICAgICAgICAgICB0cmFkZUFjY2VwdGVkID0gZmFsc2UKICAgICAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgICAgIGVuZAoKICAgICAgICAgICAgaWYgbm90SG9sZGluZ1Rvb2wgdGhlbgogICAgICAgICAgICAgICAgLS0gUmUtZXF1aXAgYW5kIHJlLXJ1biBTQU1FIGF0dGVtcHQKICAgICAgICAgICAgICAgIHVwZGF0ZVN0YXR1cygiRXF1aXBpbmcgUGV0IikKICAgICAgICAgICAgICAgIHVuZXF1aXBBbGxQZXRzKCkKICAgICAgICAgICAgICAgIGVxdWlwUGV0KHBldE5hbWUpCiAgICAgICAgICAgICAgICB0YXNrLndhaXQoMC41KQogICAgICAgICAgICAgICAgbm90SG9sZGluZ1Rvb2wgPSBmYWxzZQogICAgICAgICAgICAgICAgdHJhZGVBY2NlcHRlZCA9IGZhbHNlCiAgICAgICAgICAgICAgICBmYXZvcml0ZUJsb2NrZWQgPSBmYWxzZQogICAgICAgICAgICAgICAgY29udGludWUKICAgICAgICAgICAgZW5kCgogICAgICAgICAgICAtLSBUaW1lb3V0L290aGVyIC0+IGVuZCB0aGlzIGF0dGVtcHQKICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbmQKCiAgICAgICAgLS0gQXR0ZW1wdCBmYWlsZWQgLT4gbmV4dCBhdHRlbXB0IHdpdGggc3RhbmRhcmQgY291bnRkb3duIChhYm9ydCBlYXJseSBpZiBjb21wbGV0ZWQpCiAgICAgICAgY3VycmVudEF0dGVtcHQgKz0gMQogICAgICAgIGlmIGN1cnJlbnRBdHRlbXB0IDw9IG1heEF0dGVtcHRzIHRoZW4KICAgICAgICAgICAgbG9jYWwgYWJvcnRlZCA9IGNvdW50ZG93bldpdGhBYm9ydCg1LCBzdHJpbmcuZm9ybWF0KCJUcmFkZSBhdHRlbXB0ICVkIGZhaWxlZC4gUmV0cnlpbmcgaW4gJSVkIHNlY29uZHMuLi4iLCBjdXJyZW50QXR0ZW1wdCAtIDEpKQogICAgICAgICAgICBpZiBhYm9ydGVkIHRoZW4gcmV0dXJuIHRydWUgZW5kCiAgICAgICAgZW5kCiAgICBlbmQKCiAgICB1cGRhdGVTdGF0dXMoc3RyaW5nLmZvcm1hdCgiRmFpbGVkIHRvIHRyYWRlICVzIGFmdGVyICVkIGF0dGVtcHRzLiBTa2lwcGluZy4uLiIsIHBldE5hbWUsIG1heEF0dGVtcHRzKSkKICAgIHJldHVybiBmYWxzZQplbmQKCi0tIEZpbmQgdGFyZ2V0IHBsYXllcgp1cGRhdGVTdGF0dXMoIkxvb2tpbmcgZm9yIHRhcmdldCBwbGF5ZXIuLi4iKQpsb2NhbCBmb3VuZFBsYXllciA9IG5pbAp3aGlsZSBub3QgZm91bmRQbGF5ZXIgZG8KICAgIGZvciBfLCBwbGF5ZXIgaW4gaXBhaXJzKFBsYXllcnM6R2V0UGxheWVycygpKSBkbwogICAgICAgIGlmIHBsYXllci5OYW1lID09IHRhcmdldFVzZXJuYW1lIHRoZW4KICAgICAgICAgICAgZm91bmRQbGF5ZXIgPSBwbGF5ZXIKICAgICAgICAgICAgdXBkYXRlU3RhdHVzKCJGb3VuZCBwbGF5ZXI6ICIgLi4gdGFyZ2V0VXNlcm5hbWUpCiAgICAgICAgICAgIGJyZWFrCiAgICAgICAgZW5kCiAgICBlbmQKICAgIHRhc2sud2FpdCgxKQplbmQKCi0tIEluaXQgY291bnRzCmluaXRpYWxpemVQZXRDb3VudHMoKQoKbG9jYWwgZnVuY3Rpb24gY2hlY2tSZW1haW5pbmdQZXRzKCkKICAgIGZvciBfLCBwZXROYW1lIGluIGlwYWlycyhwZXRUb0dpdmUpIGRvCiAgICAgICAgaWYgY291bnRQZXRzSW5CYWNrcGFjayhwZXROYW1lKSA+IDAgdGhlbiByZXR1cm4gdHJ1ZSBlbmQKICAgIGVuZAogICAgcmV0dXJuIGZhbHNlCmVuZAoKLS0gTWFpbiBsb29wCndoaWxlIHRydWUgZG8KICAgIHVwZGF0ZVN0YXR1cygiU3RhcnRpbmcgQXV0byBUcmFkZSBDeWNsZSIpCiAgICBsb2NhbCBhbnl0aGluZ1RyYWRlZCA9IGZhbHNlCgogICAgZm9yIF8sIHBldE5hbWUgaW4gaXBhaXJzKHBldFRvR2l2ZSkgZG8KICAgICAgICB1cGRhdGVTdGF0dXMoIlByb2Nlc3Npbmc6ICIgLi4gcGV0TmFtZSkKICAgICAgICB1bmVxdWlwQWxsUGV0cygpCgogICAgICAgIHdoaWxlIHRydWUgZG8KICAgICAgICAgICAgbG9jYWwgcGV0c0xlZnQgPSBjb3VudFBldHNJbkJhY2twYWNrKHBldE5hbWUpCiAgICAgICAgICAgIHVwZGF0ZVBldENvdW50KHBldE5hbWUsIHBldHNMZWZ0KQogICAgICAgICAgICBpZiBwZXRzTGVmdCA9PSAwIHRoZW4KICAgICAgICAgICAgICAgIHVwZGF0ZVN0YXR1cygiTm8gbW9yZSAiIC4uIHBldE5hbWUgLi4gInMgbGVmdCB0byB0cmFkZSIpCiAgICAgICAgICAgICAgICBicmVhawogICAgICAgICAgICBlbmQKCiAgICAgICAgICAgIC0tIEVuc3VyZSBob2xkaW5nIGNvcnJlY3QgcGV0IGJlZm9yZSBzdGFydGluZyBhdHRlbXB0cwogICAgICAgICAgICBsb2NhbCBlcSA9IGVxdWlwUGV0KHBldE5hbWUpCiAgICAgICAgICAgIGlmIGVxIHRoZW4KICAgICAgICAgICAgICAgIGxvY2FsIG9rID0gdHJhZGVQZXQoZm91bmRQbGF5ZXIsIHBldE5hbWUpCiAgICAgICAgICAgICAgICBpZiBvayB0aGVuCiAgICAgICAgICAgICAgICAgICAgYW55dGhpbmdUcmFkZWQgPSB0cnVlCiAgICAgICAgICAgICAgICAgICAgdXBkYXRlU3RhdHVzKCJTdWNjZXNzZnVsbHkgdHJhZGVkICIgLi4gcGV0TmFtZSkKICAgICAgICAgICAgICAgICAgICB0YXNrLndhaXQoMikKICAgICAgICAgICAgICAgIGVsc2UKICAgICAgICAgICAgICAgICAgICAtLSAzLzMgZmFpbGVkIC0+IG1vdmUgb24sIGVuc3VyZSBub3RoaW5nIGlzIGhlbGQKICAgICAgICAgICAgICAgICAgICB1bmVxdWlwQWxsUGV0cygpCiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICAgICAgICAgIGVuZAogICAgICAgICAgICBlbHNlCiAgICAgICAgICAgICAgICB1cGRhdGVTdGF0dXMoIkZhaWxlZCB0byBlcXVpcCAiIC4uIHBldE5hbWUpCiAgICAgICAgICAgICAgICB0YXNrLndhaXQoNSkKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgZW5kCgogICAgaWYgbm90IGNoZWNrUmVtYWluaW5nUGV0cygpIHRoZW4KICAgICAgICB1cGRhdGVTdGF0dXMoIkFsbCBwZXRzIGhhdmUgYmVlbiBzdWNjZXNzZnVsbHkgdHJhZGVkISIpCiAgICAgICAgYnJlYWsKICAgIGVuZAoKICAgIGlmIG5vdCBhbnl0aGluZ1RyYWRlZCB0aGVuCiAgICAgICAgbG9jYWwgYWJvcnRlZCA9IGNvdW50ZG93bldpdGhBYm9ydCgxMCwgIk5vIHRyYWRlcyBzdWNjZWVkZWQgdGhpcyBjeWNsZS4gUmV0cnlpbmcgaW4gJWQgc2Vjb25kcy4uLiIpCiAgICAgICAgaWYgYWJvcnRlZCB0aGVuCiAgICAgICAgICAgIC0tIGluIGNhc2UgdHJhZGUgY29tcGxldGVkIG1pZC1jb3VudGRvd247IGxvb3Agd2lsbCByZS1jaGVjawogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGxvY2FsIGFib3J0ZWQgPSBjb3VudGRvd25XaXRoQWJvcnQoMywgIlNvbWUgcGV0cyByZW1haW4uIFN0YXJ0aW5nIG5ldyB0cmFkZSBjeWNsZSBpbiAlZCBzZWNvbmRzLi4uIikKICAgICAgICBpZiBhYm9ydGVkIHRoZW4KICAgICAgICAgICAgLS0gdHJhZGUgY29tcGxldGVkIG1pZC1jb3VudGRvd247IGNvbnRpbnVlCiAgICAgICAgZW5kCiAgICBlbmQKZW5kCgp1cGRhdGVTdGF0dXMoIlRyYWRpbmcgcHJvY2VzcyBjb21wbGV0ZWQiKQ==")
-loadstring(raw)()
+
+local targetUsername = config.targetUsername
+if not targetUsername then error("No target username configured! Please set Configuration.targetUsername.") return end
+
+local whiteScreen = config.whiteScreen or false
+local leaveWhenDone = config.leaveWhenDone ~= false -- default to true if not specified
+
+-- Check if current player is the receiver
+local isReceiver = (LocalPlayer.Name == targetUsername)
+if isReceiver then
+    print("Auto-Receiver mode activated for player: " .. LocalPlayer.Name)
+end
+
+-- =========================================================
+-- UI (Improved + Bigger)
+-- =========================================================
+-- Cleanup
+for _, gui in pairs(game:GetService("CoreGui"):GetChildren()) do
+	if gui.Name == "Auto Trade UI" or gui.Name == "Auto Trade White Screen" then
+		gui:Destroy()
+	end
+end
+
+-- White Screen UI
+local whiteScreenEnabled = whiteScreen
+local whiteScreenGui, whiteScreenText, normalUI
+
+local function createWhiteScreen()
+    whiteScreenGui = Instance.new("ScreenGui")
+    whiteScreenGui.Name = "Auto Trade White Screen"
+    whiteScreenGui.IgnoreGuiInset = true
+    whiteScreenGui.ResetOnSpawn = false
+    whiteScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    whiteScreenGui.Parent = game.CoreGui
+    
+    -- White background
+    local whiteFrame = Instance.new("Frame")
+    whiteFrame.Size = UDim2.new(1, 0, 1, 0)
+    whiteFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    whiteFrame.BorderSizePixel = 0
+    whiteFrame.Parent = whiteScreenGui
+    
+    -- Status text
+    whiteScreenText = Instance.new("TextLabel")
+    whiteScreenText.Size = UDim2.new(0, 400, 0, 100)
+    whiteScreenText.Position = UDim2.new(0.5, -200, 0.5, -50)
+    whiteScreenText.BackgroundTransparency = 1
+    whiteScreenText.Text = "Auto Trade - Loading..."
+    whiteScreenText.TextColor3 = Color3.fromRGB(50, 50, 50)
+    whiteScreenText.TextXAlignment = Enum.TextXAlignment.Center
+    whiteScreenText.TextYAlignment = Enum.TextYAlignment.Center
+    whiteScreenText.Font = Enum.Font.GothamSemibold
+    whiteScreenText.TextSize = 24
+    whiteScreenText.TextWrapped = true
+    whiteScreenText.Parent = whiteScreenGui
+    
+    -- Toggle button (positioned same as normal mode buttons)
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.fromOffset(60, 30)
+    -- Position it at the same location as the normal mode buttons - top right of where UI would be
+    toggleBtn.Position = UDim2.new(0.5, 320 - 60, 0.5, -230 - 40)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    toggleBtn.Text = "UI"
+    toggleBtn.TextColor3 = Color3.fromRGB(50, 50, 50)
+    toggleBtn.Font = Enum.Font.Gotham
+    toggleBtn.TextSize = 16
+    toggleBtn.Parent = whiteScreenGui
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
+    
+    toggleBtn.MouseButton1Click:Connect(function()
+        whiteScreenEnabled = not whiteScreenEnabled
+        updateUIVisibility()
+    end)
+end
+
+-- Root
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "Auto Trade UI"
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = game.CoreGui
+
+-- Main
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.fromOffset(640, 460) -- Bigger
+MainFrame.Position = UDim2.new(0.5, -320, 0.5, -230)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner", MainFrame)
+MainCorner.CornerRadius = UDim.new(0, 16)
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Thickness = 2
+MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MainStroke.Color = Color3.fromRGB(70, 70, 70)
+
+-- Top Bar
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 56)
+TopBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 16)
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -24, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = isReceiver and "Ducky Hub • GAG Auto Trade (RECEIVER MODE)" or "Ducky Hub • GAG Auto Trade"
+Title.TextColor3 = isReceiver and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 255, 255)
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Font = Enum.Font.GothamSemibold
+Title.TextSize = 22
+Title.Parent = TopBar
+
+-- Info Strip (no collision; auto height)
+local INFO_H = 132
+local InfoStrip = Instance.new("Frame")
+InfoStrip.Name = "InfoStrip"
+InfoStrip.Size = UDim2.new(1, -24, 0, INFO_H)
+InfoStrip.Position = UDim2.new(0, 12, 0, 68)
+InfoStrip.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+InfoStrip.BorderSizePixel = 0
+InfoStrip.Parent = MainFrame
+Instance.new("UICorner", InfoStrip).CornerRadius = UDim.new(0, 12)
+
+local InfoPadding = Instance.new("UIPadding", InfoStrip)
+InfoPadding.PaddingTop = UDim.new(0, 10)
+InfoPadding.PaddingBottom = UDim.new(0, 10)
+InfoPadding.PaddingLeft  = UDim.new(0, 12)
+InfoPadding.PaddingRight = UDim.new(0, 12)
+
+local InfoLayout = Instance.new("UIListLayout", InfoStrip)
+InfoLayout.FillDirection = Enum.FillDirection.Vertical
+InfoLayout.SortOrder = Enum.SortOrder.LayoutOrder
+InfoLayout.Padding = UDim.new(0, 6)
+
+local function mkInfoLabel(parent, font, size, color)
+    local L = Instance.new("TextLabel")
+    L.BackgroundTransparency = 1
+    L.TextXAlignment = Enum.TextXAlignment.Left
+    L.Font = font
+    L.TextSize = size
+    L.TextColor3 = color
+    L.TextWrapped = true
+    L.AutomaticSize = Enum.AutomaticSize.Y
+    L.Size = UDim2.new(1, 0, 0, 0)
+    L.Parent = parent
+    return L
+end
+
+local TargetText    = mkInfoLabel(InfoStrip, Enum.Font.Gotham,        18, Color3.fromRGB(220,220,220)); TargetText.Text = "Target: " .. targetUsername
+local StatusTextLbl = mkInfoLabel(InfoStrip, Enum.Font.GothamSemibold,18, Color3.fromRGB(255,255,255));  StatusTextLbl.Text = "Status: Idle"
+local AttemptText   = mkInfoLabel(InfoStrip, Enum.Font.Gotham,        17, Color3.fromRGB(210,210,210));  AttemptText.Text = "Attempt: -"
+local CountdownText = mkInfoLabel(InfoStrip, Enum.Font.Gotham,        17, Color3.fromRGB(200,200,200));  CountdownText.Text = "Countdown: -"
+
+-- Bottom Area
+local BottomRow = Instance.new("Frame")
+BottomRow.Name = "BottomRow"
+BottomRow.Size = UDim2.new(1, -24, 1, - (68 + INFO_H + 22))
+BottomRow.Position = UDim2.new(0, 12, 0, 68 + INFO_H + 14)
+BottomRow.BackgroundTransparency = 1
+BottomRow.Parent = MainFrame
+local BottomLayout = Instance.new("UIListLayout", BottomRow)
+BottomLayout.FillDirection = Enum.FillDirection.Horizontal
+BottomLayout.Padding = UDim.new(0, 12)
+
+-- Left: Pet list (scroll)
+local PetPanel = Instance.new("Frame")
+PetPanel.Name = "PetPanel"
+PetPanel.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+PetPanel.BorderSizePixel = 0
+PetPanel.Size = UDim2.new(0.6, 0, 1, 0)
+PetPanel.Parent = BottomRow
+Instance.new("UICorner", PetPanel).CornerRadius = UDim.new(0, 12)
+
+local PetHeader = Instance.new("TextLabel")
+PetHeader.Text = "Pet Queue"
+PetHeader.Font = Enum.Font.GothamSemibold
+PetHeader.TextSize = 18
+PetHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+PetHeader.BackgroundTransparency = 1
+PetHeader.Size = UDim2.new(1, -16, 0, 28)
+PetHeader.Position = UDim2.new(0, 8, 0, 6)
+PetHeader.TextXAlignment = Enum.TextXAlignment.Left
+PetHeader.Parent = PetPanel
+
+local PetList = Instance.new("ScrollingFrame")
+PetList.Name = "PetList"
+PetList.Size = UDim2.new(1, -16, 1, - (28 + 16))
+PetList.Position = UDim2.new(0, 8, 0, 28 + 10)
+PetList.BackgroundTransparency = 1
+PetList.ScrollBarThickness = 6
+PetList.CanvasSize = UDim2.new(0, 0, 0, 0)
+PetList.Parent = PetPanel
+
+local PetListLayout = Instance.new("UIListLayout", PetList)
+PetListLayout.FillDirection = Enum.FillDirection.Vertical
+PetListLayout.Padding = UDim.new(0, 6)
+PetListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local PetListPadding = Instance.new("UIPadding", PetList)
+PetListPadding.PaddingTop = UDim.new(0, 4)
+PetListPadding.PaddingLeft = UDim.new(0, 2)
+PetListPadding.PaddingRight = UDim.new(0, 8)
+PetListPadding.PaddingBottom = UDim.new(0, 8)
+
+-- Right: Notes
+local LogPanel = Instance.new("Frame")
+LogPanel.Name = "LogPanel"
+LogPanel.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+LogPanel.BorderSizePixel = 0
+LogPanel.Size = UDim2.new(0.4, 0, 1, 0)
+LogPanel.Parent = BottomRow
+Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 12)
+
+local LogHeader = Instance.new("TextLabel")
+LogHeader.Text = "Notes"
+LogHeader.Font = Enum.Font.GothamSemibold
+LogHeader.TextSize = 18
+LogHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+LogHeader.BackgroundTransparency = 1
+LogHeader.Size = UDim2.new(1, -16, 0, 28)
+LogHeader.Position = UDim2.new(0, 8, 0, 6)
+LogHeader.TextXAlignment = Enum.TextXAlignment.Left
+LogHeader.Parent = LogPanel
+
+local Notes = Instance.new("TextLabel")
+Notes.BackgroundTransparency = 1
+Notes.TextXAlignment = Enum.TextXAlignment.Left
+Notes.TextYAlignment = Enum.TextYAlignment.Top
+Notes.Font = Enum.Font.Gotham
+Notes.TextSize = 16
+Notes.TextColor3 = Color3.fromRGB(210, 210, 210)
+Notes.TextWrapped = true
+Notes.Size = UDim2.new(1, -16, 1, - (28 + 12))
+Notes.Position = UDim2.new(0, 8, 0, 28 + 6)
+Notes.Text = "- Retries up to 3x per pet\n- Auto-handle favorited pets\n- Re-equips if you unhold the pet\n- Countdown shows when waiting\n- Silent recount after each trade"
+Notes.Parent = LogPanel
+
+-- Pet rows map
+local petRows = {}
+local function ensurePetRow(name)
+	if petRows[name] and petRows[name].Parent == PetList then return petRows[name] end
+	local row = Instance.new("Frame")
+	row.Name = "Row_" .. name
+	row.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+	row.BorderSizePixel = 0
+	row.Size = UDim2.new(1, 0, 0, 34)
+	row.Parent = PetList
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	local pad = Instance.new("UIPadding", row)
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.PaddingRight = UDim.new(0, 10)
+
+	local nameLbl = Instance.new("TextLabel")
+	nameLbl.Name = "Name"
+	nameLbl.BackgroundTransparency = 1
+	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+	nameLbl.Font = Enum.Font.GothamSemibold
+	nameLbl.TextSize = 16
+	nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLbl.Text = name
+	nameLbl.Size = UDim2.new(0.6, 0, 1, 0)
+	nameLbl.Parent = row
+
+	local countLbl = Instance.new("TextLabel")
+	countLbl.Name = "Count"
+	countLbl.BackgroundTransparency = 1
+	countLbl.TextXAlignment = Enum.TextXAlignment.Right
+	countLbl.Font = Enum.Font.Gotham
+	countLbl.TextSize = 16
+	countLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+	countLbl.Text = "-"
+	countLbl.Size = UDim2.new(0.4, 0, 1, 0)
+	countLbl.Position = UDim2.new(0.6, 0, 0, 0)
+	countLbl.Parent = row
+
+	petRows[name] = row
+	PetList.CanvasSize = UDim2.new(0, 0, 0, PetListLayout.AbsoluteContentSize.Y + 12)
+	return row
+end
+
+-- Circle toggle button (floating at the top of MainFrame, top-right side)
+local guiVisible = true
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleGUIButton"
+ToggleButton.Size = UDim2.fromOffset(32, 32)
+-- Position it right at the top-right of MainFrame
+ToggleButton.Position = UDim2.new(0, MainFrame.AbsolutePosition.X + MainFrame.AbsoluteSize.X - 32, 0, MainFrame.AbsolutePosition.Y - 5)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.Text = "◉"
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.TextSize = 18
+ToggleButton.Parent = ScreenGui
+Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(1, 0)
+
+local tbStroke = Instance.new("UIStroke")
+tbStroke.Thickness = 2
+tbStroke.Color = Color3.fromRGB(70, 70, 70)
+tbStroke.Parent = ToggleButton
+
+-- White Screen toggle button (next to the GUI toggle, at the top of MainFrame)
+local WhiteScreenButton = Instance.new("TextButton")
+WhiteScreenButton.Name = "WhiteScreenButton"
+WhiteScreenButton.Size = UDim2.fromOffset(50, 32)
+WhiteScreenButton.Position = UDim2.new(0, MainFrame.AbsolutePosition.X + MainFrame.AbsoluteSize.X - 90, 0, MainFrame.AbsolutePosition.Y - 5)
+WhiteScreenButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+WhiteScreenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+WhiteScreenButton.Text = "WS"
+WhiteScreenButton.Font = Enum.Font.GothamSemibold
+WhiteScreenButton.TextSize = 14
+WhiteScreenButton.Parent = ScreenGui
+Instance.new("UICorner", WhiteScreenButton).CornerRadius = UDim.new(0, 8)
+
+local wsStroke = Instance.new("UIStroke")
+wsStroke.Thickness = 2
+wsStroke.Color = Color3.fromRGB(70, 70, 70)
+wsStroke.Parent = WhiteScreenButton
+
+-- Keep buttons at the top of UI when you drag the MainFrame
+MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+    ToggleButton.Position = UDim2.fromOffset(
+        MainFrame.AbsolutePosition.X + MainFrame.AbsoluteSize.X - 32,
+        MainFrame.AbsolutePosition.Y - 5
+    )
+    WhiteScreenButton.Position = UDim2.fromOffset(
+        MainFrame.AbsolutePosition.X + MainFrame.AbsoluteSize.X - 90,
+        MainFrame.AbsolutePosition.Y - 5
+    )
+end)
+
+-- UI Visibility Management
+function updateUIVisibility()
+    if whiteScreenEnabled then
+        -- Show white screen, hide normal UI
+        ScreenGui.Enabled = false
+        if not whiteScreenGui then
+            createWhiteScreen()
+        end
+        whiteScreenGui.Enabled = true
+        WhiteScreenButton.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+    else
+        -- Show normal UI, hide white screen
+        ScreenGui.Enabled = true
+        if whiteScreenGui then
+            whiteScreenGui.Enabled = false
+        end
+        WhiteScreenButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    end
+end
+
+-- Toggle logic
+ToggleButton.MouseButton1Click:Connect(function()
+    guiVisible = not guiVisible
+    MainFrame.Visible = guiVisible
+    ToggleButton.Text = guiVisible and "◉" or "○"
+end)
+
+WhiteScreenButton.MouseButton1Click:Connect(function()
+    whiteScreenEnabled = not whiteScreenEnabled
+    updateUIVisibility()
+end)
+
+-- Initialize UI
+if whiteScreen then
+    createWhiteScreen()
+end
+updateUIVisibility()
+
+
+-- =========================================================
+-- UI helpers
+-- =========================================================
+local function updateStatus(text)
+	StatusTextLbl.Text = "Status: " .. text
+	if whiteScreenEnabled and whiteScreenText then
+		whiteScreenText.Text = text
+	end
+end
+
+local function updateAttempt(attempt, maxAttempts)
+	AttemptText.Text = string.format("Attempt: %d/%d", attempt, maxAttempts)
+end
+
+local function updateCountdownText(text)
+	CountdownText.Text = "Countdown: " .. text
+end
+
+local function updatePetCount(petName, count)
+	petStatus[petName] = count == 0 and "Completed" or tostring(count)
+	ensurePetRow(petName)
+	local row = petRows[petName]
+	if row and row:FindFirstChild("Count") then
+		row.Count.Text = petStatus[petName]
+	end
+end
+
+-- =========================================================
+-- Logic (same behavior, with silent recounts)
+-- =========================================================
+local function baseName(str)
+	local n = str:match("^([^[]+)")
+	return n and n:match("^%s*(.-)%s*$") or str
+end
+
+local function unequipAllPets()
+	local char = LocalPlayer.Character
+	local backpack = LocalPlayer.Backpack
+	if not char or not backpack then return end
+	for _, itm in ipairs(char:GetChildren()) do
+		if itm:IsA("Tool") then
+			itm.Parent = backpack
+		end
+	end
+end
+
+local function getAllPetsFromInventory()
+	local allPets = {}
+	local petCounts = {}
+	local backpack = LocalPlayer.Backpack
+	local character = LocalPlayer.Character
+	
+	if not backpack or not character then return {} end
+	
+	-- Items to exclude (not pets)
+	local excludeItems = {
+		"Watering Can", "Fertilizer", "Shovel", "Hoe", "Rake", "Scissors", 
+		"Seed", "Plant", "Flower", "Tree", "Bush", "Grass", "Dirt", "Water",
+		"Tool", "Bucket", "Pot", "Garden", "Farm", "Crop", "Harvest"
+	}
+	
+	local function isPet(itemName)
+		local basePetName = baseName(itemName)
+		-- Check if it contains any excluded words
+		for _, excludeWord in ipairs(excludeItems) do
+			if string.find(basePetName:lower(), excludeWord:lower()) then
+				return false
+			end
+		end
+		-- Additional check: pets usually have brackets with stats like [Age 1] or [0.99 KG]
+		-- or are simple names without common tool/plant keywords
+		return true
+	end
+	
+	-- Check backpack
+	for _, pet in ipairs(backpack:GetChildren()) do
+		if pet:IsA("Tool") and isPet(pet.Name) then
+			local petName = baseName(pet.Name)
+			if not petCounts[petName] then
+				petCounts[petName] = true
+				table.insert(allPets, petName)
+			end
+		end
+	end
+	
+	-- Check character (equipped pets)
+	for _, pet in ipairs(character:GetChildren()) do
+		if pet:IsA("Tool") and isPet(pet.Name) then
+			local petName = baseName(pet.Name)
+			if not petCounts[petName] then
+				petCounts[petName] = true
+				table.insert(allPets, petName)
+			end
+		end
+	end
+	
+	return allPets
+end
+
+local function countPetsInBackpack(petName)
+	local count = 0
+	local backpack = LocalPlayer.Backpack
+	local character = LocalPlayer.Character
+	if not backpack or not character then return 0 end
+	for _, pet in ipairs(backpack:GetChildren()) do
+		if baseName(pet.Name) == petName then count += 1 end
+	end
+	for _, pet in ipairs(character:GetChildren()) do
+		if baseName(pet.Name) == petName then count += 1 end
+	end
+	return count
+end
+
+-- Silent recount: fast pass + delayed pass (catch replication)
+local function refreshCountsFor(petName)
+    task.defer(function()
+        task.wait(0.2)
+        updatePetCount(petName, countPetsInBackpack(petName))
+        task.wait(0.8)
+        updatePetCount(petName, countPetsInBackpack(petName))
+    end)
+end
+
+local function refreshAllCounts()
+    task.defer(function()
+        task.wait(0.2)
+        local petsToRefresh = tradeWholeInventory and getAllPetsFromInventory() or petToGive
+        for _, name in ipairs(petsToRefresh) do
+            updatePetCount(name, countPetsInBackpack(name))
+        end
+        task.wait(0.8)
+        petsToRefresh = tradeWholeInventory and getAllPetsFromInventory() or petToGive
+        for _, name in ipairs(petsToRefresh) do
+            updatePetCount(name, countPetsInBackpack(name))
+        end
+    end)
+end
+
+local function initializePetCounts()
+	updateStatus("Initializing...")
+	task.wait(1)
+	
+	local petsToProcess = tradeWholeInventory and getAllPetsFromInventory() or petToGive
+	
+	for _, petName in ipairs(petsToProcess) do
+		ensurePetRow(petName)
+		updatePetCount(petName, countPetsInBackpack(petName))
+	end
+	updateCountdownText("-")
+	updateAttempt(0, 3)
+end
+
+-- Remotes
+local PetGiftingService = ReplicatedStorage.GameEvents.PetGiftingService
+local Notification = ReplicatedStorage.GameEvents.Notification
+local Favorite_Item = ReplicatedStorage.GameEvents.Favorite_Item
+local GiftPet = ReplicatedStorage.GameEvents.GiftPet -- Remote for receiving trades
+local AcceptPetGift = ReplicatedStorage.GameEvents.AcceptPetGift -- Remote for accepting trades
+
+-- Auto-Receiver functionality
+if isReceiver then
+    updateStatus("Receiver mode")
+    updateCountdownText("Ready")
+    
+    -- Initialize pet count tracking for receiver
+    local totalReceived = 0
+    
+    local function refreshReceiverCounts()
+        -- Get all pets from inventory and update their counts
+        local allPets = getAllPetsFromInventory()
+        for _, petName in ipairs(allPets) do
+            local count = countPetsInBackpack(petName)
+            updatePetCount(petName, count)
+        end
+        updatePetCount("Total Received", totalReceived)
+    end
+    
+    local function initializeReceiverCounts()
+        -- Show initial counts for all pets in inventory
+        ensurePetRow("Total Received")
+        updatePetCount("Total Received", 0)
+        refreshReceiverCounts()
+    end
+    
+    initializeReceiverCounts()
+    
+    local receiverTradeProcessing = false
+    local currentTradePet = nil
+    
+    -- Handle incoming trade offers
+    GiftPet.OnClientEvent:Connect(function(petId, petName, senderName)
+        if receiverTradeProcessing then
+            return
+        end
+        
+        receiverTradeProcessing = true
+        currentTradePet = petName
+        
+        updateStatus("Receiving trade")
+        updateCountdownText("Processing")
+        
+        -- Auto-accept the trade using the correct remote
+        AcceptPetGift:FireServer(true, petId)
+    end)
+    
+    -- Listen for trade completion notifications
+    Notification.OnClientEvent:Connect(function(message)
+        if receiverTradeProcessing and type(message) == "string" then
+            if message == "Trade completed!" or message == "Trade complete" or message == "Trade Complete" then
+                receiverTradeProcessing = false
+                
+                -- Update counts after receiving trade
+                if currentTradePet then
+                    totalReceived = totalReceived + 1
+                    currentTradePet = nil
+                    
+                    -- Refresh all pet counts after a short delay
+                    task.defer(function()
+                        task.wait(0.5)
+                        refreshReceiverCounts()
+                    end)
+                end
+                
+                updateStatus("Trade completed")
+                updateCountdownText("Ready")
+                
+                task.wait(1)
+                updateStatus("Ready for next trade")
+            end
+        end
+    end)
+    
+    -- Periodic count refresh
+    task.spawn(function()
+        while isReceiver do
+            if not receiverTradeProcessing then
+                refreshReceiverCounts()
+            end
+            task.wait(10) -- Refresh every 10 seconds
+        end
+    end)
+    
+    -- Keep the receiver script running
+    while isReceiver do
+        task.wait(15) -- Check every 15 seconds
+    end
+    return -- Exit the script for receivers
+end
+
+-- Notifications
+Notification.OnClientEvent:Connect(function(message)
+	if type(message) == "string" then
+		if message == "Trade completed!" or message == "Trade complete" or message == "Trade Complete" then
+			tradeAccepted = true
+            refreshAllCounts() -- server moved items; update everything
+		elseif message == "Cannot gift a favorited pet!" then
+			favoriteBlocked = true
+		elseif message == "You are not holding a tool!" then
+			notHoldingTool = true
+		end
+	end
+end)
+
+-- Equip (no auto-unfavorite; only respond to server messages)
+local function equipPet(petName)
+	local backpack = LocalPlayer.Backpack
+	for _, pet in ipairs(backpack:GetChildren()) do
+		if pet:IsA("Tool") and baseName(pet.Name) == petName then
+			pet.Parent = LocalPlayer.Character
+			task.wait(0.5)
+			return pet
+		end
+	end
+	return nil
+end
+
+-- Countdown helper (aborts if trade completes)
+local function countdownWithAbort(totalSeconds, fmt)
+	for i = totalSeconds, 1, -1 do
+		if tradeAccepted then return true end
+		updateCountdownText(string.format(fmt, i))
+		task.wait(1)
+		if tradeAccepted then return true end
+	end
+	updateCountdownText("-")
+	return false
+end
+
+-- Trade logic (with in-attempt handling of favorite/unholding)
+local function tradePet(targetPlayer, petName)
+	local maxAttempts = 3
+	local currentAttempt = 1
+
+	while currentAttempt <= maxAttempts do
+		updateStatus(string.format("Trading %s", petName))
+		updateAttempt(currentAttempt, maxAttempts)
+
+		tradeAccepted = false
+		favoriteBlocked = false
+		notHoldingTool = false
+
+		-- inner loop: retry within SAME attempt on handled errors
+		while true do
+			-- ensure holding
+			local char = LocalPlayer.Character
+			local holding = false
+			if char then
+				for _, tool in ipairs(char:GetChildren()) do
+					if tool:IsA("Tool") and baseName(tool.Name) == petName then
+						holding = true
+						break
+					end
+				end
+			end
+			if not holding then
+				updateStatus("Equiping Pet")
+				unequipAllPets()
+				local ok = equipPet(petName)
+				if not ok then
+					break
+				end
+			end
+
+			-- send
+			PetGiftingService:FireServer("GivePet", targetPlayer)
+
+			-- wait signals
+			local startTime = tick()
+			local timeout = 5
+			while (tick() - startTime) < timeout and not tradeAccepted and not favoriteBlocked and not notHoldingTool do
+				task.wait(0.5)
+			end
+
+			if tradeAccepted then
+				updateCountdownText("-")
+                refreshCountsFor(petName) -- update this pet’s count silently
+				return true
+			end
+
+			if favoriteBlocked then
+				updateStatus("Pet favorited → unfavoriting")
+				-- unfavorite held tools then small delay; same attempt
+				local ch = LocalPlayer.Character
+				if ch then
+					for _, tool in ipairs(ch:GetChildren()) do
+						if tool:IsA("Tool") then
+							Favorite_Item:FireServer(tool)
+						end
+					end
+				end
+				countdownWithAbort(2, "Retrying in %d seconds...")
+				favoriteBlocked = false
+				notHoldingTool = false
+				tradeAccepted = false
+				continue
+			end
+
+			if notHoldingTool then
+				updateStatus("Equiping Pet")
+				unequipAllPets()
+				equipPet(petName)
+				task.wait(0.5)
+				notHoldingTool = false
+				tradeAccepted = false
+				favoriteBlocked = false
+				continue
+			end
+
+			-- timeout/other
+			break
+		end
+
+		-- attempt fail -> next attempt
+		currentAttempt += 1
+		if currentAttempt <= maxAttempts then
+			countdownWithAbort(5, string.format("Retrying in %%d seconds... (after attempt %d)", currentAttempt - 1))
+		end
+	end
+
+	updateStatus(string.format("Failed to trade %s after 3 attempts", petName))
+	updateCountdownText("-")
+	return false
+end
+
+-- Find target
+updateStatus("Looking for target...")
+local foundPlayer = nil
+while not foundPlayer do
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Name == targetUsername then
+			foundPlayer = player
+			updateStatus("Found player")
+			break
+		end
+	end
+	task.wait(1)
+end
+
+-- Init
+initializePetCounts()
+
+local function checkRemainingPets()
+	local petsToCheck = tradeWholeInventory and getAllPetsFromInventory() or petToGive
+	for _, petName in ipairs(petsToCheck) do
+		if countPetsInBackpack(petName) > 0 then return true end
+	end
+	return false
+end
+
+-- Main loop
+while true do
+	updateStatus("Starting trade cycle")
+	local anythingTraded = false
+	
+	-- Get current pet list (either from config or whole inventory)
+	local currentPetList = tradeWholeInventory and getAllPetsFromInventory() or petToGive
+
+	for _, petName in ipairs(currentPetList) do
+		updateStatus("Processing " .. petName)
+		unequipAllPets()
+
+		while true do
+			local petsLeft = countPetsInBackpack(petName)
+			updatePetCount(petName, petsLeft)
+			if petsLeft == 0 then
+				updateStatus("No more " .. petName .. " left")
+				break
+			end
+
+			local eq = equipPet(petName)
+			if eq then
+				local ok = tradePet(foundPlayer, petName)
+				if ok then
+					anythingTraded = true
+					updateStatus("Successfully traded " .. petName)
+					countdownWithAbort(2, "Cooldown %d...")
+				else
+					unequipAllPets()
+					break
+				end
+			else
+				updateStatus("Failed to equip " .. petName)
+				countdownWithAbort(5, "Retrying in %d seconds...")
+				break
+			end
+		end
+	end
+
+	if not checkRemainingPets() then
+		updateStatus("All pets traded")
+		updateCountdownText("-")
+		break
+	end
+
+	if not anythingTraded then
+		countdownWithAbort(10, "Retrying in %d seconds...")
+	else
+		countdownWithAbort(3, "Next cycle in %d seconds...")
+	end
+end
+
+updateStatus("Trading completed")
+updateCountdownText("-")
+
+if leaveWhenDone then
+	updateStatus("Leaving game...")
+	updateCountdownText("5")
+	task.wait(1)
+	updateCountdownText("4")
+	task.wait(1)
+	updateCountdownText("3")
+	task.wait(1)
+	updateCountdownText("2")
+	task.wait(1)
+	updateCountdownText("1")
+	task.wait(1)
+	updateCountdownText("Goodbye!")
+	task.wait(0.5)
+	game:Shutdown()
+else
+	updateStatus("Completed - Staying in game")
+	updateCountdownText("Complete")
+end
